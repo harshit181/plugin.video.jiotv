@@ -247,11 +247,11 @@ def show_epg(plugin, day, channel_id):
             },
             "params": {
                 "channel_id": each.get("channel_id"),
-                "showtime": None if islive else each.get("showtime", "").replace(":", ""),
-                "srno": None if islive else datetime.fromtimestamp(int(each.get("startEpoch", 0)*.001)).strftime('%Y%m%d'),
-                "programId": None if islive else each.get("srno", ""),
-                "begin": None if islive else datetime.utcfromtimestamp(int(each.get("startEpoch", 0)*.001)).strftime('%Y%m%dT%H%M%S'),
-                "end": None if islive else datetime.utcfromtimestamp(int(each.get("endEpoch", 0)*.001)).strftime('%Y%m%dT%H%M%S')
+                "showtime": each.get("showtime", "").replace(":", ""),
+                "srno": datetime.fromtimestamp(int(each.get("startEpoch", 0)*.001)).strftime('%Y%m%d'),
+                "programId": each.get("srno", ""),
+                "begin": datetime.utcfromtimestamp(int(each.get("startEpoch", 0)*.001)).strftime('%Y%m%dT%H%M%S'),
+                "end": datetime.utcfromtimestamp(int(each.get("endEpoch", 0)*.001)).strftime('%Y%m%dT%H%M%S')
             }
         })
     if int(day) == 0:
@@ -301,6 +301,12 @@ def play_ex(plugin, dt=None):
 @isLoggedIn
 def play(plugin, channel_id, showtime=None, srno=None, programId=None, begin=None, end=None):
     # import web_pdb; web_pdb.set_trace()
+    # Script.notify("programId", programId)
+    # Script.notify("begin", programId)
+    # Script.notify("end", programId)
+    # Script.notify("srno", srno)
+    # Script.notify("showtime", showtime)
+    # Script.notify("channel_id", channel_id)
     is_helper = inputstreamhelper.Helper("mpd", drm="com.widevine.alpha")
     hasIs = is_helper.check_inputstream()
     if not hasIs:
@@ -473,7 +479,7 @@ def m3ugen(plugin, notify="yes"):
             # get the epg for this channel
             # }&begin={{Y}}{{m}}{{d}}T{{H}}{{M}}{{S}}&end={{Y}}{{m}}{{d}}T{{H}}{{M}}{{S}}
 
-            catchup = ' catchup="vod" catchup-source="{0}channel_id={1}&showtime={{H}}{{M}}{{S}}&srno={{Y}}{{m}}{{d}}&programId={{catchup-id}}&begin={{Y}}{{m}}{{d}}T{{H}}{{M}}{{S}}&end={{Y}}{{m}}{{d}}T{{H}}{{M}}{{S}}" catchup-days="7"'.format(
+            catchup = ' catchup="vod" catchup-source="{0}channel_id={1}&showtime={{H}}{{M}}{{S}}&srno={{Y}}{{m}}{{d}}&programId={{catchup-id}}" catchup-days="7"'.format(
                 PLAY_URL, channel.get("channel_id"))
         m3ustr += M3U_CHANNEL.format(
             tvg_id=channel.get("channel_id"),
@@ -495,47 +501,67 @@ def m3ugen(plugin, notify="yes"):
 @Script.register
 def epg_setup(plugin):
     Script.notify("Please wait", "Epg setup in progress")
-    with busy():
-        # Download EPG XML file
-        url = Settings.get_string("epgurl")
-        if not url:
-            url = "https://bit.ly/3kWSsl3"
-        payload = {}
-        headers = {}
-        response = requests.request("GET", url, headers=headers, data=payload)
-        with open(EPG_PATH,  'wb') as f:
-            f.write(response.content)
-            # for chunk in response.iter_content(chunk_size=1024):
-            #     if chunk:
-            #         f.write(chunk)
-        # Extract and parse the XML file
-        with gzip.open(EPG_PATH, 'rb') as f:
-            data = f.read()
-            xml_content = data.decode('utf-8')
-            root = ET.fromstring(xml_content)
-        # Modify all the programs in the EPG
-        # programs = root.findall('./programme')
-        for program in root.iterfind(".//programme"):
-            # Example: Modify the program and add catchupid
-            icon = program.find('icon')
-            icon_src = icon.get('src')
-            jpg_name = icon_src.rsplit('/', 1)[-1]
-            catchup_id = os.path.splitext(jpg_name)[0]
-            program.set('catchup-id', catchup_id)
-            title = program.find('title')
-            title.text = title.text.strip()
+    pDialog = DialogProgress()
+    pDialog.create('Epg setup in progress')
+    # Download EPG XML file
+    url = Settings.get_string("epgurl")
+    if not url or (len(url) < 5):
+        url = "https://cdn.jsdelivr.net/gh/mitthu786/tvepg/epg.xml.gz"
+    payload = {}
+    headers = {}
+    response = requests.request("GET", url, headers=headers, data=payload)
+    # source_tree = ET.parse(CHANNELS_XML)
+    # source_root = source_tree.getroot()
+    with open(EPG_PATH,  'wb') as f:
+        f.write(response.content)
+        # for chunk in response.iter_content(chunk_size=1024):
+        #     if chunk:
+        #         f.write(chunk)
+    # Extract and parse the XML file
+    pDialog.update(20)
+    with gzip.open(EPG_PATH, 'rb') as f:
+        data = f.read()
+        xml_content = data.decode('utf-8')
+        root = ET.fromstring(xml_content)
+    # Modify all the programs in the EPG
+    # programs = root.findall('./programme')
+    pDialog.update(30)
+    # for channel in root.iterfind("channel"):
+    #     root.remove(channel)
+    pDialog.update(35)
+    # Example: Modify the program and add catchupid
+    # for channel in source_root.iterfind('channel'):
+    #     new_channel = ET.Element(channel.tag, channel.attrib)
+    #     for child in channel:
+    #         new_child = ET.Element(child.tag, child.attrib)
+    #         new_child.text = child.text
+    #         new_channel.append(new_child)
+    #     root.append(new_channel)
+    pDialog.update(45)
+    for program in root.iterfind(".//programme"):
+        # Example: Modify the program and add catchupid
+        icon = program.find('icon')
+        icon_src = icon.get('src')
+        jpg_name = icon_src.rsplit('/', 1)[-1]
+        catchup_id = os.path.splitext(jpg_name)[0]
+        program.set('catchup-id', catchup_id)
+        title = program.find('title')
+        title.text = title.text.strip()
+    pDialog.update(60)
+    # create the XML declaration and add it to the top of the file
+    xml_declaration = '<?xml version="1.0" encoding="UTF-8"?>\n'
 
-        # create the XML declaration and add it to the top of the file
-        xml_declaration = '<?xml version="1.0" encoding="UTF-8"?>\n'
-
-        # create the doctype declaration
-        doctype_declaration = '<!DOCTYPE tv SYSTEM "xmltv.dtd">\n'
-        full_xml_bytes = xml_declaration.encode('UTF-8') + doctype_declaration.encode('UTF-8') + \
-            ET.tostring(root, encoding='UTF-8')
-        gzip_bytes = gzip.compress(full_xml_bytes)
-        with open(EPG_PATH, 'wb') as f:
-            f.write(gzip_bytes)
-    Script.notify("JioTV", "Epg generated,Now setup iptv pvr")
+    # create the doctype declaration
+    doctype_declaration = '<!DOCTYPE tv SYSTEM "xmltv.dtd">\n'
+    full_xml_bytes = xml_declaration.encode('UTF-8') + doctype_declaration.encode('UTF-8') + \
+        ET.tostring(root, encoding='UTF-8')
+    gzip_bytes = gzip.compress(full_xml_bytes)
+    pDialog.update(80)
+    with open(EPG_PATH, 'wb') as f:
+        f.write(gzip_bytes)
+    pDialog.update(100)
+    pDialog.close()
+    Script.notify("JioTV", "Epg generated")
 
 
 # PVR Setup `route` to access from Settings
@@ -551,8 +577,8 @@ def pvrsetup(plugin):
     if check_addon(IDdoADDON):
         set_setting("m3uPathType", "0")
         set_setting("m3uPath", M3U_SRC)
-        set_setting("epgPathType", "0")
-        set_setting("epgPath", EPG_PATH)
+        set_setting("epgPathType", "1")
+        set_setting("epgUrl", EPG_SRC)
         set_setting("catchupEnabled", "true")
         set_setting("catchupWatchEpgBeginBufferMins", "0")
         set_setting("catchupWatchEpgEndBufferMins", "0")
