@@ -174,27 +174,30 @@ def getCachedChannels():
         channelList = db.get("channelList", False)
         if not channelList:
             try:
-                channelListResp = urlquick.get(CHANNELS_SRC).json().get("result")
+                channelListResp = urlquick.get(
+                    CHANNELS_SRC, verify=False).json().get("result")
                 db["channelList"] = channelListResp
             except:
                 Script.notify("Connection error ", "Retry after sometime")
         return db.get("channelList", False)
-    
+
+
 def getCachedDictionary():
     with PersistentDict("localdb") as db:
         dictionary = db.get("dictionary", False)
         if not dictionary:
             try:
-                r = urlquick.get(DICTIONARY_URL).text.encode(
+                r = urlquick.get(DICTIONARY_URL, verify=False).text.encode(
                     'utf8')[3:].decode('utf8')
                 db["dictionary"] = json.loads(r)
             except:
                 Script.notify("Connection error ", "Retry after sometime")
         return db.get("dictionary", False)
-    
+
+
 def getFeatured():
     try:
-        resp = urlquick.get(FEATURED_SRC, headers={
+        resp = urlquick.get(FEATURED_SRC, verify=False, headers={
             "usergroup": "tvYR7NSNn7rymo3F",
             "os": "android",
             "devicetype": "phone",
@@ -203,7 +206,8 @@ def getFeatured():
         return resp.get("featuredNewData", [])
     except:
         Script.notify("Connection error ", "Retry after sometime")
-    
+
+
 def cleanLocalCache():
     try:
         with PersistentDict("localdb") as db:
@@ -225,6 +229,16 @@ def getChannelHeaders():
         'devicetype': 'phone',
         'os': 'android',
         'osversion': '9',
+    }
+
+
+def getChannelHeadersWithHost():
+    return {
+        'deviceType': 'phone',
+        'host': 'tv.media.jio.com',
+        'os': 'android',
+        'versioncode': '296',
+        'Conetent-Type': 'application/json'
     }
 
 
@@ -279,10 +293,11 @@ def quality_to_enum(quality_str, arr_len):
     """Converts quality into a numeric value. Max clips to fall within valid bounds."""
     mapping = {
         'Best': arr_len-1,
-        'High': 4,
-        'Medium+': 3,
-        'Medium': 2,
-        'Low': 1,
+        'High': max(arr_len-2, arr_len-3),
+        'Medium+': max(arr_len-3, arr_len-4),
+        'Medium': max(2, arr_len-3),
+        'Low': min(2, arr_len-3),
+        'Lower': 1,
         'Lowest': 0,
     }
     if quality_str in mapping:
